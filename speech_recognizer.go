@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 )
 
+// SpeechRecognizer reads audio input from microphone and translates speech into text.
 type SpeechRecognizer struct {
 	recognizer         *vosk.VoskRecognizer
 	microphoneStream   *portaudio.Stream

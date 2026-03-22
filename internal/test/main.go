@@ -1,11 +1,9 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
-	"os"
-	"os/signal"
+	"sync"
 
 	stt "github.com/beefllama/speech-to-text-go"
 )
@@ -26,25 +24,25 @@ func main() {
 		log.Printf("failed to init speech recognizer, err: %s\n", err.Error())
 		return
 	}
-	defer speechRecognizer.Close()
 
 	phrasesChan := speechRecognizer.GetTextOuputStream()
 
 	speechRecognizer.StartListening()
 
-	log.Println("listening...")
+	fmt.Println("Listening...")
+	fmt.Println("Press Enter to quit program")
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 
-loop:
-	for {
-		select {
-		case phrase := <-phrasesChan:
+		for phrase := range phrasesChan {
 			fmt.Println(phrase)
-		case <-ctx.Done():
-			break loop
-		default:
 		}
-	}
+	}()
+
+	fmt.Scanln()
+	speechRecognizer.Close()
+	wg.Wait()
 }
