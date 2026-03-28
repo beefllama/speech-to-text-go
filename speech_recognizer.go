@@ -3,7 +3,6 @@ package stt
 import (
 	"encoding/binary"
 	"encoding/json"
-	"log"
 	"sync"
 	"sync/atomic"
 
@@ -58,6 +57,8 @@ func (r *SpeechRecognizer) Close() {
 	deinitVosk(r.recognizer)
 }
 
+const chanBufferSize = 1000
+
 // processAudioChunk returns ready = true if silence was reached and a phrase can be retrieved by calling getResults.
 func (r *SpeechRecognizer) processAudioChunk(audioData []byte) (ready bool, err error) {
 	result := r.recognizer.AcceptWaveform(audioData)
@@ -104,8 +105,7 @@ func (r *SpeechRecognizer) convertSpeechToText() {
 	for audioData := range r.audioInputChan {
 		ready, err := r.processAudioChunk(audioData)
 		if err != nil {
-			// TODO
-			panic(err)
+			panic(errors.Wrap(err, "failed to process audio chunk"))
 		}
 
 		if !ready {
@@ -114,8 +114,7 @@ func (r *SpeechRecognizer) convertSpeechToText() {
 
 		text, err := r.getResults()
 		if err != nil {
-			// TODO
-			panic(err)
+			panic(errors.Wrap(err, "failed to get results from vosk recognizer"))
 		}
 
 		select {
@@ -127,8 +126,7 @@ func (r *SpeechRecognizer) convertSpeechToText() {
 
 	text, err := r.getFinalResults()
 	if err != nil {
-		// TODO
-		panic(err)
+		panic(errors.Wrap(err, "failed to get final results from vosk recognizer"))
 	}
 
 	r.textOutputChan <- text
@@ -138,16 +136,13 @@ func (r *SpeechRecognizer) captureAudioFromMicrophone() {
 	defer r.wg.Done()
 
 	if startErr := r.microphoneStream.Start(); startErr != nil {
-		// TODO terminate instead of log or panic ???
-		log.Fatalf("failed to start microphone stream, err: %s\n", startErr.Error())
+		panic(errors.Wrap(startErr, "failed to start microphone stream"))
 	}
 
 loop:
 	for {
 		if readErr := r.microphoneStream.Read(); readErr != nil {
-			// TODO terminate instead of log or panic ???
-			log.Printf("failed to read from microphone stream, err: %s\n", readErr.Error())
-			continue
+			panic(errors.Wrap(readErr, "failed to read from microphone stream"))
 		}
 
 		// TODO make this better and don't do needless work of reading microphone stream if listening is disabled
@@ -163,8 +158,7 @@ loop:
 	}
 
 	if stopErr := r.microphoneStream.Stop(); stopErr != nil {
-		// TODO terminate instead of log or panic ???
-		log.Fatalf("failed to stop microphone stream, err: %s\n", stopErr.Error())
+		panic(errors.Wrap(stopErr, "failed to stop microphone stream"))
 	}
 }
 
@@ -196,8 +190,8 @@ func NewSpeechRecognizer(voskModelPath string) (*SpeechRecognizer, error) {
 		audioSamplesBuffer: audioSamplesBuffer,
 		stopConvertSignal:  make(chan struct{}),
 		stopCaptureSignal:  make(chan struct{}),
-		audioInputChan:     make(chan []byte, 1000), // TODO what buffer size to use?
-		textOutputChan:     make(chan string, 1000),
+		audioInputChan:     make(chan []byte, chanBufferSize),
+		textOutputChan:     make(chan string, chanBufferSize),
 		wg:                 &sync.WaitGroup{},
 		listeningEnabled:   atomic.Bool{},
 	}
