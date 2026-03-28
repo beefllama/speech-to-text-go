@@ -11,31 +11,47 @@ import (
 	"github.com/pkg/errors"
 )
 
+const chanBufferSize = 1000
+
 // SpeechRecognizer reads audio input from microphone and translates speech into text.
 type SpeechRecognizer struct {
 	recognizer         *vosk.VoskRecognizer
 	microphoneStream   *portaudio.Stream
 	audioSamplesBuffer []int16
-	stopConvertSignal  chan struct{}
 	stopCaptureSignal  chan struct{}
-	audioInputChan     chan []byte
-	textOutputChan     chan string
 	wg                 *sync.WaitGroup
 	listeningEnabled   atomic.Bool
 }
 
-// GetTextOuputStream returns a channel of phrases transcribed from microphone input.
-func (r *SpeechRecognizer) GetTextOuputStream() <-chan string {
-	return r.textOutputChan
-}
+// StartListening enables microphone audio capture and transcription.
+// Returns a channel of phrases transcribed from microphone input and true if listening is enabled, nil and false otherwise.
+func (r *SpeechRecognizer) StartListening() (<-chan string, bool) {
+	if r.IsListening() {
+		return nil, false
+	}
 
-// StartListening enable microphone audio capture and transcription.
-func (r *SpeechRecognizer) StartListening() {
+	audioInputChan := make(chan []byte, chanBufferSize)
+	textOutputChan := make(chan string, chanBufferSize)
+
+	r.wg.Add(2)
+
+	go r.convertSpeechToText(audioInputChan, textOutputChan)
+	go r.captureAudioFromMicrophone(audioInputChan)
+
 	r.listeningEnabled.Store(true)
+
+	return textOutputChan, true
 }
 
 // StopListening disable microphone audio capture and transcription.
 func (r *SpeechRecognizer) StopListening() {
+	if !r.IsListening() {
+		return
+	}
+
+	r.stopCaptureSignal <- struct{}{}
+	r.wg.Wait()
+
 	r.listeningEnabled.Store(false)
 }
 
@@ -46,18 +62,79 @@ func (r *SpeechRecognizer) IsListening() bool {
 
 // Close must be called when done using SpeechRecognizer.
 func (r *SpeechRecognizer) Close() {
-	r.stopConvertSignal <- struct{}{}
-	r.stopCaptureSignal <- struct{}{}
-	r.wg.Wait()
+	r.StopListening()
 
-	close(r.textOutputChan)
-	close(r.audioInputChan)
+	close(r.stopCaptureSignal)
 
 	deinitAudioCapture(r.microphoneStream)
 	deinitVosk(r.recognizer)
 }
 
-const chanBufferSize = 1000
+func (r *SpeechRecognizer) convertSpeechToText(audioInputChan <-chan []byte, textOutputChan chan<- string) {
+	defer r.wg.Done()
+
+	for audioData := range audioInputChan {
+		ready, err := r.processAudioChunk(audioData)
+		if err != nil {
+			panic(errors.Wrap(err, "failed to process audio chunk"))
+		}
+
+		if !ready {
+			continue
+		}
+
+		text, err := r.getResults()
+		if err != nil {
+			panic(errors.Wrap(err, "failed to get results from vosk recognizer"))
+		}
+
+		textOutputChan <- text
+	}
+
+	text, err := r.getFinalResults()
+	if err != nil {
+		panic(errors.Wrap(err, "failed to get final results from vosk recognizer"))
+	}
+
+	textOutputChan <- text
+	close(textOutputChan)
+}
+
+func (r *SpeechRecognizer) captureAudioFromMicrophone(audioInputChan chan<- []byte) {
+	defer r.wg.Done()
+
+	if startErr := r.microphoneStream.Start(); startErr != nil {
+		panic(errors.Wrap(startErr, "failed to start microphone stream"))
+	}
+
+loop:
+	for {
+		if readErr := r.microphoneStream.Read(); readErr != nil {
+			panic(errors.Wrap(readErr, "failed to read from microphone stream"))
+		}
+
+		select {
+		case audioInputChan <- int16ToBytes(r.audioSamplesBuffer):
+		case <-r.stopCaptureSignal:
+			break loop
+		}
+	}
+
+	close(audioInputChan)
+
+	if stopErr := r.microphoneStream.Stop(); stopErr != nil {
+		panic(errors.Wrap(stopErr, "failed to stop microphone stream"))
+	}
+}
+
+func int16ToBytes(samples []int16) []byte {
+	// TODO make this faster
+	buf := make([]byte, len(samples)*2) // 2 bytes per int16
+	for i, v := range samples {
+		binary.LittleEndian.PutUint16(buf[i*2:], uint16(v))
+	}
+	return buf
+}
 
 // processAudioChunk returns ready = true if silence was reached and a phrase can be retrieved by calling getResults.
 func (r *SpeechRecognizer) processAudioChunk(audioData []byte) (ready bool, err error) {
@@ -99,78 +176,6 @@ func (r *SpeechRecognizer) getFinalResults() (string, error) {
 	return phrase.Text, nil
 }
 
-func (r *SpeechRecognizer) convertSpeechToText() {
-	defer r.wg.Done()
-
-	for audioData := range r.audioInputChan {
-		ready, err := r.processAudioChunk(audioData)
-		if err != nil {
-			panic(errors.Wrap(err, "failed to process audio chunk"))
-		}
-
-		if !ready {
-			continue
-		}
-
-		text, err := r.getResults()
-		if err != nil {
-			panic(errors.Wrap(err, "failed to get results from vosk recognizer"))
-		}
-
-		select {
-		case r.textOutputChan <- text:
-		case <-r.stopConvertSignal:
-			return
-		}
-	}
-
-	text, err := r.getFinalResults()
-	if err != nil {
-		panic(errors.Wrap(err, "failed to get final results from vosk recognizer"))
-	}
-
-	r.textOutputChan <- text
-}
-
-func (r *SpeechRecognizer) captureAudioFromMicrophone() {
-	defer r.wg.Done()
-
-	if startErr := r.microphoneStream.Start(); startErr != nil {
-		panic(errors.Wrap(startErr, "failed to start microphone stream"))
-	}
-
-loop:
-	for {
-		if readErr := r.microphoneStream.Read(); readErr != nil {
-			panic(errors.Wrap(readErr, "failed to read from microphone stream"))
-		}
-
-		// TODO make this better and don't do needless work of reading microphone stream if listening is disabled
-		if r.listeningEnabled.Load() {
-			r.audioInputChan <- int16ToBytes(r.audioSamplesBuffer)
-		}
-
-		select {
-		case <-r.stopCaptureSignal:
-			break loop
-		default:
-		}
-	}
-
-	if stopErr := r.microphoneStream.Stop(); stopErr != nil {
-		panic(errors.Wrap(stopErr, "failed to stop microphone stream"))
-	}
-}
-
-func int16ToBytes(samples []int16) []byte {
-	// TODO make this faster
-	buf := make([]byte, len(samples)*2) // 2 bytes per int16
-	for i, v := range samples {
-		binary.LittleEndian.PutUint16(buf[i*2:], uint16(v))
-	}
-	return buf
-}
-
 // NewSpeechRecognizer initializes an instance of SpeechRecognizer
 // On program exit SpeechRecognizer.Close must be called to deinitialize.
 func NewSpeechRecognizer(voskModelPath string) (*SpeechRecognizer, error) {
@@ -188,18 +193,10 @@ func NewSpeechRecognizer(voskModelPath string) (*SpeechRecognizer, error) {
 		recognizer:         recognizer,
 		microphoneStream:   microphoneStream,
 		audioSamplesBuffer: audioSamplesBuffer,
-		stopConvertSignal:  make(chan struct{}),
 		stopCaptureSignal:  make(chan struct{}),
-		audioInputChan:     make(chan []byte, chanBufferSize),
-		textOutputChan:     make(chan string, chanBufferSize),
 		wg:                 &sync.WaitGroup{},
 		listeningEnabled:   atomic.Bool{},
 	}
-
-	speechRecognizer.wg.Add(2)
-
-	go speechRecognizer.convertSpeechToText()
-	go speechRecognizer.captureAudioFromMicrophone()
 
 	return speechRecognizer, nil
 }

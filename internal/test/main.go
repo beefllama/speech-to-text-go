@@ -24,13 +24,17 @@ func main() {
 		log.Printf("failed to init speech recognizer, err: %s\n", err.Error())
 		return
 	}
+	defer speechRecognizer.Close()
 
-	phrasesChan := speechRecognizer.GetTextOuputStream()
+	phrasesChan, ok := speechRecognizer.StartListening()
+	if ok {
+		fmt.Println("Listening ...")
+	} else {
+		fmt.Println("Failed to start listening, exiting program ...")
+		return
+	}
 
-	speechRecognizer.StartListening()
-
-	fmt.Println("Listening...")
-	fmt.Println("Press Enter to quit program")
+	fmt.Println("Say 'stop' to quit program")
 
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
@@ -39,10 +43,12 @@ func main() {
 
 		for phrase := range phrasesChan {
 			fmt.Println(phrase)
+			if phrase == "stop" {
+				fmt.Println("Stopped listening")
+				speechRecognizer.StopListening()
+			}
 		}
 	}()
 
-	fmt.Scanln()
-	speechRecognizer.Close()
 	wg.Wait()
 }
