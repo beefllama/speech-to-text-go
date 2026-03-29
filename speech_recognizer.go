@@ -24,7 +24,8 @@ type SpeechRecognizer struct {
 }
 
 // StartListening enables microphone audio capture and transcription.
-// Returns a channel of phrases transcribed from microphone input and true if listening is enabled, nil and false otherwise.
+// Returns a channel of phrases transcribed from microphone input and true if listening has not been enabled previously.
+// If listeting has been started already, this function will return nil and false.
 func (r *SpeechRecognizer) StartListening() (<-chan string, bool) {
 	if r.IsListening() {
 		return nil, false
@@ -43,7 +44,7 @@ func (r *SpeechRecognizer) StartListening() (<-chan string, bool) {
 	return textOutputChan, true
 }
 
-// StopListening disable microphone audio capture and transcription.
+// StopListening disables microphone audio capture and transcription.
 func (r *SpeechRecognizer) StopListening() {
 	if !r.IsListening() {
 		return
@@ -177,7 +178,7 @@ func (r *SpeechRecognizer) getFinalResults() (string, error) {
 }
 
 // NewSpeechRecognizer initializes an instance of SpeechRecognizer
-// On program exit SpeechRecognizer.Close must be called to deinitialize.
+// At some point before program exit, SpeechRecognizer.Close must be called to deinitialize.
 func NewSpeechRecognizer(voskModelPath string) (*SpeechRecognizer, error) {
 	recognizer, err := initVosk(voskModelPath)
 	if err != nil {

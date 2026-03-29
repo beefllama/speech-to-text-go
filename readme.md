@@ -25,7 +25,7 @@ const (
 )
 
 func main() {
-	fmt.Println("speech-to-text-go !")
+	fmt.Println("speech-to-text-go!")
 
 	speechRecognizer, err := stt.NewSpeechRecognizer(voskModelPath)
 	if err != nil {

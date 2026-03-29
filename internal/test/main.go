@@ -13,7 +13,7 @@ const (
 )
 
 func main() {
-	fmt.Println("speech-to-text-go !")
+	fmt.Println("speech-to-text-go!")
 
 	defer func() {
 		fmt.Println("test deinit is done")
