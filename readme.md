@@ -2,6 +2,10 @@
 
 A package for speech-to-text from microphone audio input.
 
+```
+go get github.com/beefllama/speech-to-text-go
+```
+
 Table of Contents:
 - [Quick Start Example](#quick-start-example)
 - [Prerequisites](#prerequisites)
@@ -90,15 +94,27 @@ wget https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
 unzip vosk-model-small-en-us-0.15.zip
 ```
 
+You can check out other vosk models here: https://alphacephei.com/vosk/models
+
 ### 2. Install portaudio
 
 You will need to download portaudio.
 
 Check out this guide: https://files.portaudio.com/docs/v19-doxydocs/tutorial_start.html
 
-On Ubuntu, you can install portaudio with the following command:
+**Ubuntu**:
 ```
 sudo apt install portaudio19-dev
+```
+
+**Arch**:
+```
+sudo pacman -Syu portaudio
+```
+
+**MacOS**:
+```
+brew install portaudio
 ```
 
 ## Running a program
@@ -107,7 +123,7 @@ To run golang program that uses this package, you must provide environment varia
 
 VOSK_PATH must be the absolute path to vosk library downloaded [here](#1-install-vosk).
 
-For linux:
+For linux (example):
 ```
 VOSK_PATH=/home/beefllama/dev/speech-to-text-go/vosk/vosk-linux-x86_64-0.3.45 LD_LIBRARY_PATH=$VOSK_PATH CGO_CPPFLAGS="-I $VOSK_PATH" CGO_LDFLAGS="-L $VOSK_PATH -ldl" go run ./internal/test/main.go
 ```
