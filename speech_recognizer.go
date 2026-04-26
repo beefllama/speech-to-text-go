@@ -2,11 +2,9 @@ package stt
 
 import (
 	"encoding/binary"
-	"encoding/json"
 	"sync"
 	"sync/atomic"
 
-	vosk "github.com/alphacep/vosk-api/go"
 	"github.com/gordonklaus/portaudio"
 	"github.com/pkg/errors"
 )
@@ -15,7 +13,7 @@ const chanBufferSize = 1000
 
 // SpeechRecognizer reads audio input from microphone and translates speech into text.
 type SpeechRecognizer struct {
-	recognizer         *vosk.VoskRecognizer
+	voskClient         voskClient
 	microphoneStream   *portaudio.Stream
 	audioSamplesBuffer []int16
 	stopCaptureSignal  chan struct{}
@@ -68,14 +66,14 @@ func (r *SpeechRecognizer) Close() {
 	close(r.stopCaptureSignal)
 
 	deinitAudioCapture(r.microphoneStream)
-	deinitVosk(r.recognizer)
+	r.voskClient.Close()
 }
 
 func (r *SpeechRecognizer) convertSpeechToText(audioInputChan <-chan []byte, textOutputChan chan<- string) {
 	defer r.wg.Done()
 
 	for audioData := range audioInputChan {
-		ready, err := r.processAudioChunk(audioData)
+		ready, err := r.voskClient.ProcessAudioChunk(audioData)
 		if err != nil {
 			panic(errors.Wrap(err, "failed to process audio chunk"))
 		}
@@ -84,7 +82,7 @@ func (r *SpeechRecognizer) convertSpeechToText(audioInputChan <-chan []byte, tex
 			continue
 		}
 
-		text, err := r.getResults()
+		text, err := r.voskClient.GetResults()
 		if err != nil {
 			panic(errors.Wrap(err, "failed to get results from vosk recognizer"))
 		}
@@ -92,7 +90,7 @@ func (r *SpeechRecognizer) convertSpeechToText(audioInputChan <-chan []byte, tex
 		textOutputChan <- text
 	}
 
-	text, err := r.getFinalResults()
+	text, err := r.voskClient.GetFinalResults()
 	if err != nil {
 		panic(errors.Wrap(err, "failed to get final results from vosk recognizer"))
 	}
@@ -137,61 +135,25 @@ func int16ToBytes(samples []int16) []byte {
 	return buf
 }
 
-// processAudioChunk returns ready = true if silence was reached and a phrase can be retrieved by calling getResults.
-func (r *SpeechRecognizer) processAudioChunk(audioData []byte) (ready bool, err error) {
-	result := r.recognizer.AcceptWaveform(audioData)
-
-	// 1 if silence is occured and you can retrieve a new utterance with result method
-	// 0 if decoding continues
-	// -1 if exception occured
-
-	switch result {
-	case 1:
-		return true, nil
-	case 0:
-		return false, nil
-	case -1:
-		return false, errors.New("exception occured when processing audio")
-	default:
-		return false, errors.New("unexpected recognizer.AcceptWaveform result")
-	}
-}
-
-// getResults returns results from processing audio chunks.
-func (r *SpeechRecognizer) getResults() (string, error) {
-	var phrase resultPhrase
-	if err := json.Unmarshal([]byte(r.recognizer.Result()), &phrase); err != nil {
-		return "", errors.Wrap(err, "failed to unmarshal result phrase")
-	}
-
-	return phrase.Text, nil
-}
-
-// getFinalResults returns results from processing audio chunks (without waiting for silence).
-func (r *SpeechRecognizer) getFinalResults() (string, error) {
-	var phrase resultPhrase
-	if err := json.Unmarshal([]byte(r.recognizer.FinalResult()), &phrase); err != nil {
-		return "", errors.Wrap(err, "failed to unmarshal result phrase")
-	}
-
-	return phrase.Text, nil
-}
-
-// NewSpeechRecognizer initializes an instance of SpeechRecognizer
+// NewSpeechRecognizer initializes an instance of SpeechRecognizer that uses local vosk model.
 // At some point before program exit, SpeechRecognizer.Close must be called to deinitialize.
-func NewSpeechRecognizer(voskModelPath string) (*SpeechRecognizer, error) {
-	recognizer, err := initVosk(voskModelPath)
+func NewSpeechRecognizerWithLocalVoskModel(voskModelPath string) (*SpeechRecognizer, error) {
+	voskClient, err := newLocalModelVoskClient(voskModelPath)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to init vosk")
+		return nil, errors.Wrap(err, "failed to init vosk client")
 	}
 
+	return newSpeechRecognizer(voskClient)
+}
+
+func newSpeechRecognizer(voskClient voskClient) (*SpeechRecognizer, error) {
 	microphoneStream, audioSamplesBuffer, err := initAudioCapture()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to init audio capture")
 	}
 
 	speechRecognizer := &SpeechRecognizer{
-		recognizer:         recognizer,
+		voskClient:         voskClient,
 		microphoneStream:   microphoneStream,
 		audioSamplesBuffer: audioSamplesBuffer,
 		stopCaptureSignal:  make(chan struct{}),

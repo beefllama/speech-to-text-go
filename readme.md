@@ -31,7 +31,7 @@ const (
 func main() {
 	fmt.Println("speech-to-text-go!")
 
-	speechRecognizer, err := stt.NewSpeechRecognizer(voskModelPath)
+	speechRecognizer, err := stt.NewSpeechRecognizerWithLocalVoskModel(voskModelPath)
 	if err != nil {
 		log.Printf("failed to init speech recognizer, err: %s\n", err.Error())
 		return
