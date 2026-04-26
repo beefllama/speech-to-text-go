@@ -87,6 +87,10 @@ func (r *SpeechRecognizer) convertSpeechToText(audioInputChan <-chan []byte, tex
 			panic(errors.Wrap(err, "failed to get results from vosk recognizer"))
 		}
 
+		if len(text) == 0 {
+			continue
+		}
+
 		textOutputChan <- text
 	}
 
@@ -139,6 +143,17 @@ func int16ToBytes(samples []int16) []byte {
 // At some point before program exit, SpeechRecognizer.Close must be called to deinitialize.
 func NewSpeechRecognizerWithLocalVoskModel(voskModelPath string) (*SpeechRecognizer, error) {
 	voskClient, err := newLocalModelVoskClient(voskModelPath)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to init vosk client")
+	}
+
+	return newSpeechRecognizer(voskClient)
+}
+
+// NewSpeechRecognizer initializes an instance of SpeechRecognizer that uses vosk server.
+// At some point before program exit, SpeechRecognizer.Close must be called to deinitialize.
+func NewSpeechRecognizerWithVoskServer(host, port string) (*SpeechRecognizer, error) {
+	voskClient, err := newVoskServerClient(host, port)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to init vosk client")
 	}
