@@ -2,6 +2,14 @@
 
 A package for speech-to-text from microphone audio input.
 
+This package captures audio input from the default microphone on the system and transcribes user's speech.
+
+Speech recognition is enabled by vosk spech recognition toolkit and is done locally (offline).
+
+There are 2 ways to use this package:
+- vosk library + speech recognition model installed locally on the system
+- docker container with vosk server
+
 ```
 go get github.com/beefllama/speech-to-text-go
 ```
@@ -21,7 +29,7 @@ import (
 	"log"
 	"sync"
 
-	stt "github.com/beefllama/speech-to-text-go"
+	stt_local_model "github.com/beefllama/speech-to-text-go/local-model"
 )
 
 const (
@@ -31,7 +39,7 @@ const (
 func main() {
 	fmt.Println("speech-to-text-go!")
 
-	speechRecognizer, err := stt.NewSpeechRecognizerWithLocalVoskModel(voskModelPath)
+	speechRecognizer, err := stt_local_model.NewSpeechRecognizerWithLocalVoskModel(voskModelPath)
 	if err != nil {
 		log.Printf("failed to init speech recognizer, err: %s\n", err.Error())
 		return
@@ -69,34 +77,12 @@ func main() {
 ## Prerequisites
 
 This package uses 2 dependencies:
-- vosk
-- portaudio
+- portaudio (audio capture from microphone)
+- vosk (speech recognition)
 
 Dependency installation is required.
 
-### 1. Install VOSK
-
-Official set up guide for Go is here: https://github.com/alphacep/vosk-api/tree/master/go/example
-
-1. Download VOSK
-
-```
-wget https://github.com/alphacep/vosk-api/releases/download/v0.3.45/vosk-linux-x86_64-0.3.45.zip
-
-unzip vosk-linux-x86_64-0.3.45.zip
-```
-
-2. Download VOSK model
-
-```
-wget https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
-
-unzip vosk-model-small-en-us-0.15.zip
-```
-
-You can check out other vosk models here: https://alphacephei.com/vosk/models
-
-### 2. Install portaudio
+### 1. Install portaudio
 
 You will need to download portaudio.
 
@@ -117,15 +103,8 @@ sudo pacman -Syu portaudio
 brew install portaudio
 ```
 
-## Running a program
+### 2. Install VOSK
 
-To run golang program that uses this package, you must provide environment variables for vosk.
+[Setup guide for vosk server docker container](docker-container-example.md)
 
-VOSK_PATH must be the absolute path to vosk library downloaded [here](#1-install-vosk).
-
-For linux (example):
-```
-VOSK_PATH=/home/beefllama/dev/speech-to-text-go/vosk/vosk-linux-x86_64-0.3.45 LD_LIBRARY_PATH=$VOSK_PATH CGO_CPPFLAGS="-I $VOSK_PATH" CGO_LDFLAGS="-L $VOSK_PATH -ldl" go run ./internal/test/main.go
-```
-
-For other platforms consult vosk documentation: https://github.com/alphacep/vosk-api/tree/master/go/example
+[Setup guide for vosk local model](local-model-example.md)
