@@ -5,7 +5,7 @@ import (
 	"log"
 	"sync"
 
-	stt "github.com/beefllama/speech-to-text-go"
+	stt_local_model "github.com/beefllama/speech-to-text-go/local-model"
 )
 
 const (
@@ -19,7 +19,7 @@ func main() {
 		fmt.Println("test deinit is done")
 	}()
 
-	speechRecognizer, err := stt.NewSpeechRecognizerWithLocalVoskModel(voskModelPath)
+	speechRecognizer, err := stt_local_model.NewSpeechRecognizerWithLocalVoskModel(voskModelPath)
 	if err != nil {
 		log.Printf("failed to init speech recognizer, err: %s\n", err.Error())
 		return

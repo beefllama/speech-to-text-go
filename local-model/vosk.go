@@ -1,4 +1,4 @@
-package stt
+package local_model
 
 import (
 	vosk "github.com/alphacep/vosk-api/go"

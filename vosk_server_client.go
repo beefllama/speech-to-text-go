@@ -52,7 +52,7 @@ func (c *voskServerClient) Close() {
 	c.conn.Close() // ingore error
 }
 
-func newVoskServerClient(host, port string) (voskClient, error) {
+func newVoskServerClient(host, port string) (VoskClient, error) {
 	serverURL := url.URL{Scheme: "ws", Host: host + ":" + port, Path: ""}
 
 	// 1. open connection to the server

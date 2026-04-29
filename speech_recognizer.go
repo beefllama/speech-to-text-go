@@ -13,7 +13,7 @@ const chanBufferSize = 1000
 
 // SpeechRecognizer reads audio input from microphone and translates speech into text.
 type SpeechRecognizer struct {
-	voskClient         voskClient
+	voskClient         VoskClient
 	microphoneStream   *portaudio.Stream
 	audioSamplesBuffer []int16
 	stopCaptureSignal  chan struct{}
@@ -139,17 +139,6 @@ func int16ToBytes(samples []int16) []byte {
 	return buf
 }
 
-// NewSpeechRecognizer initializes an instance of SpeechRecognizer that uses local vosk model.
-// At some point before program exit, SpeechRecognizer.Close must be called to deinitialize.
-func NewSpeechRecognizerWithLocalVoskModel(voskModelPath string) (*SpeechRecognizer, error) {
-	voskClient, err := newLocalModelVoskClient(voskModelPath)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to init vosk client")
-	}
-
-	return newSpeechRecognizer(voskClient)
-}
-
 // NewSpeechRecognizer initializes an instance of SpeechRecognizer that uses vosk server.
 // At some point before program exit, SpeechRecognizer.Close must be called to deinitialize.
 func NewSpeechRecognizerWithVoskServer(host, port string) (*SpeechRecognizer, error) {
@@ -158,10 +147,10 @@ func NewSpeechRecognizerWithVoskServer(host, port string) (*SpeechRecognizer, er
 		return nil, errors.Wrap(err, "failed to init vosk client")
 	}
 
-	return newSpeechRecognizer(voskClient)
+	return NewSpeechRecognizer(voskClient)
 }
 
-func newSpeechRecognizer(voskClient voskClient) (*SpeechRecognizer, error) {
+func NewSpeechRecognizer(voskClient VoskClient) (*SpeechRecognizer, error) {
 	microphoneStream, audioSamplesBuffer, err := initAudioCapture()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to init audio capture")

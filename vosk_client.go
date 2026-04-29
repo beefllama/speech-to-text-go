@@ -1,6 +1,6 @@
 package stt
 
-type voskClient interface {
+type VoskClient interface {
 	// ProcessAudioChunk returns ready = true if silence was reached and a phrase can be retrieved by calling GetResults.
 	ProcessAudioChunk(audioData []byte) (ready bool, err error)
 	// GetResults returns results from processing audio chunks.
